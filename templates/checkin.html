@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prisutnost – {{ session_id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 90%; margin: 40px auto; padding: 20px; }
+        h1 { text-align: center; color: #333; }
+        input { width: 100%; padding: 12px; margin: 12px 0; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 14px; background: #4CAF50; color: white; border: none; font-size: 18px; border-radius: 4px; cursor: pointer; }
+        #result { margin-top: 20px; text-align: center; font-weight: bold; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <h1>Prisutnost – {{ session_id }}</h1>
+
+    <form id="form">
+        <input type="hidden" name="device_id" id="device_id">
+        <input type="text" name="ime" placeholder="Ime i prezime" required autofocus>
+        <input type="text" name="jmbag" placeholder="JMBAG (npr. 00365...)" required>
+        <button type="submit">Potvrdi dolazak</button>
+    </form>
+
+    <div id="result"></div>
+
+    <script>
+        // Persistent device ID
+        let devId = localStorage.getItem("attendance_device_id");
+        if (!devId) {
+            devId = crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + Math.random().toString(36).slice(2);
+            localStorage.setItem("attendance_device_id", devId);
+        }
+        document.getElementById("device_id").value = devId;
+
+        document.getElementById("form").addEventListener("submit", async e => {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(e.target));
+            const resDiv = document.getElementById("result");
+
+            try {
+                const resp = await fetch("/checkin", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(data)
+                });
+                if (resp.ok) {
+                    resDiv.style.color = "green";
+                    resDiv.innerText = "Uspješno ste prijavljeni!";
+                    e.target.reset();
+                } else {
+                    const err = await resp.json();
+                    resDiv.style.color = "red";
+                    resDiv.innerText = err.detail || "Greška pri prijavi";
+                }
+            } catch {
+                resDiv.style.color = "red";
+                resDiv.innerText = "Nema veze sa serverom";
+            }
+        });
+    </script>
+</body>
+</html>

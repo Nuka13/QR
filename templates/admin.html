@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin – {{ session_id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+        h1, h2 { text-align: center; }
+        button { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; }
+        .green { background: #4CAF50; color: white; border: none; border-radius: 4px; }
+        .red { background: #f44336; color: white; border: none; border-radius: 4px; }
+        img { max-width: 100%; margin: 20px auto; display: block; }
+    </style>
+</head>
+<body>
+    <h1>Admin ploča – {{ session_id }}</h1>
+    <p style="text-align: center; font-size: 1.2em;">
+        Trenutno prijavljeno uređaja: <strong>{{ device_count }}</strong>
+    </p>
+
+    <div style="text-align: center;">
+        <h2>QR kod za učenike</h2>
+        <img src="{{ qr_url }}" alt="QR kod za prisutnost">
+        <p>(QR se mijenja svakih {{ QR_REFRESH_SECONDS }} sekundi)</p>
+
+        <button class="green" onclick="resetSession()">Resetiraj sesiju (novi početak)</button>
+    </div>
+
+    <script>
+        async function resetSession() {
+            if (!confirm("Resetirati sesiju? Svi uređaji će moći ponovno prijaviti.")) return;
+            const resp = await fetch("/admin/reset", {
+                method: "POST",
+                headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                body: new URLSearchParams({password: "{{ password }}"})
+            });
+            const data = await resp.json();
+            alert(data.status || "Greška pri resetu");
+            location.reload();
+        }
+    </script>
+</body>
+</html>
