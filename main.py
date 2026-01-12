@@ -11,6 +11,8 @@ import threading
 import time
 from urllib.parse import quote
 from typing import Optional
+from dotenv import load_dotenv
+load_dotenv()
 import os 
 
 app = FastAPI()
