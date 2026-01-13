@@ -3,7 +3,8 @@ uvicorn
 gspread
 google-auth
 jinja2
-qrcode
+qrcode[pil]
 python-dotenv
 python-multipart
+
 
