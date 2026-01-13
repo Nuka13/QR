@@ -10,22 +10,40 @@
         button { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; }
         .green { background: #4CAF50; color: white; border: none; border-radius: 4px; }
         .red { background: #f44336; color: white; border: none; border-radius: 4px; }
-        img { max-width: 100%; margin: 20px auto; display: block; }
+        img { max-width: 100%; margin: 20px auto; display: block; border: 1px solid #ddd; border-radius: 8px; }
+        #qr-container { text-align: center; }
     </style>
 </head>
 <body>
     <div style="text-align: center;">
         <h2>QR kod za učenike</h2>
-        <img src="{{ qr_url }}" alt="QR kod za prisutnost">
+        <div id="qr-container">
+            <img id="qr-image" src="/qr" alt="QR kod za prisutnost">
+        </div>
 
         <p style="text-align: center; font-size: 1.2em;">
-            Trenutno prijavljenih: <strong>{{ device_count }}</strong>
+            Trenutno prijavljenih: <strong id="count">{{ device_count }}</strong>
         </p>
 
         <button class="green" onclick="resetSession()">Resetiraj sesiju (novi početak)</button>
     </div>
 
     <script>
+        const REFRESH_INTERVAL = 20000;  // 20 seconds in ms - match your QR_REFRESH_SECONDS
+
+        function refreshQR() {
+            const img = document.getElementById('qr-image');
+            // Add timestamp cache-buster to force reload from server
+            const timestamp = new Date().getTime();
+            img.src = '/qr?t=' + timestamp;
+        }
+
+        // Start auto-refresh timer
+        setInterval(refreshQR, REFRESH_INTERVAL);
+
+        // Optional: immediate refresh on page load after a short delay
+        setTimeout(refreshQR, 1000);
+
         async function resetSession() {
             if (!confirm("Resetirati sesiju? Svi uređaji će moći ponovno prijaviti.")) return;
             const resp = await fetch("/admin/reset", {
@@ -35,8 +53,20 @@
             });
             const data = await resp.json();
             alert(data.status || "Greška pri resetu");
-            location.reload();
+            location.reload();  // reload page to update count & QR
         }
+
+        // Optional: auto-update count every 10 seconds (calls admin endpoint again)
+        setInterval(() => {
+            fetch(location.href)  // reload current page silently for count update
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, "text/html");
+                    const newCount = doc.querySelector('#count').innerText;
+                    document.querySelector('#count').innerText = newCount;
+                });
+        }, 10000);
     </script>
 </body>
 </html>
