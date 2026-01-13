@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from app.sheets import get_sheet
+from app.sheets import get_sheet  # just get_sheet, we will batch append
 from datetime import datetime
 import qrcode
 import io
@@ -10,7 +10,7 @@ import uuid
 import threading
 import time
 from urllib.parse import quote
-from typing import Optional, List
+from typing import Optional
 from dotenv import load_dotenv
 import os
 import json
@@ -52,50 +52,25 @@ class CheckinData(BaseModel):
     ime: str
     jmbag: str
     device_id: str
-    token: str  # ignored in test mode
+    token: str  # token included now
 
-class MassCheckinItem(BaseModel):
-    ime: str
-    jmbag: str
-    device_id: str = "mass-test"
-
-class MassCheckinPayload(BaseModel):
-    students: List[MassCheckinItem]
-
-# ─────────────── CHECK-IN ENDPOINT (for single student - checks disabled for test) ───────────────
+# ─────────────── CHECK-IN ENDPOINT ───────────────
 @app.post("/checkin")
 async def checkin(data: CheckinData):
     with lock:
-        # ─── COMMENTED OUT FOR STRESS TESTING ───
-        # if data.device_id in used_devices:
-        #     raise HTTPException(400, "Ovaj uređaj je već prijavljen u ovoj sesiji.")
-        # if data.token not in {current_qr_token, previous_qr_token}:
-        #     raise HTTPException(400, "QR kod je istekao.")
+        # Already checked in device
+        if data.device_id in used_devices:
+            raise HTTPException(400, "Ovaj uređaj je već prijavljen u ovoj sesiji.")
 
-        # used_devices.add(data.device_id)  # also commented if you want no tracking at all
+        # Check token validity (current or previous)
+        if data.token not in {current_qr_token, previous_qr_token}:
+            raise HTTPException(400, "QR kod je istekao.")
 
-        pending_checkins.append(data.dict())
-        print(f"CHECKIN: {data.ime} | {data.jmbag} | device: {data.device_id[:12]}...")
+        # Accept device
+        used_devices.add(data.device_id)
+        pending_checkins.append(data.dict())  # queue for batch write
 
     return {"status": "success"}
-
-# ─────────────── MASS CHECK-IN ENDPOINT (send many at once) ───────────────
-@app.post("/mass-checkin")
-async def mass_checkin(payload: MassCheckinPayload):
-    added = 0
-    with lock:
-        for student in payload.students:
-            entry = {
-                "ime": student.ime,
-                "jmbag": student.jmbag,
-                "device_id": student.device_id,
-                "token": "mass-test"
-            }
-            pending_checkins.append(entry)
-            print(f"MASS: {student.ime} | {student.jmbag}")
-            added += 1
-
-    return {"status": "success", "added": added}
 
 # ─────────────── QR CODE ENDPOINT ───────────────
 @app.get("/qr")
@@ -160,7 +135,7 @@ async def reset_session(password: str = Form(...)):
 # ─────────────── BATCH WRITER THREAD ───────────────
 def batch_writer():
     while True:
-        time.sleep(5)  # ← changed to 5 seconds (less aggressive on Sheets quota)
+        time.sleep(2)  # write every 2 seconds
         with lock:
             batch = pending_checkins.copy()
             pending_checkins.clear()
@@ -168,13 +143,12 @@ def batch_writer():
             continue
         try:
             sheet = get_sheet()
-            rows = [[c["ime"], c["jmbag"], c["device_id"], datetime.now().isoformat()] for c in batch]
+            rows = [[c["ime"], c["jmbag"], c["device_id"]] for c in batch]
             sheet.append_rows(rows)
-            print(f"Batch written: {len(batch)} rows")
         except Exception as e:
+            # On failure, requeue
             with lock:
                 pending_checkins.extend(batch)
-            print("Batch write failed:", str(e))
+            print("Batch write failed:", e)
 
 threading.Thread(target=batch_writer, daemon=True).start()
-
