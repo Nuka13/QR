@@ -32,49 +32,57 @@
     <p id="response"></p>
 
     <script>
-        // Generate persistent device ID
-        let deviceId = localStorage.getItem("attendance_device_id");
-        if (!deviceId) {
-            deviceId = crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + Math.random().toString(36).substr(2);
-            localStorage.setItem("attendance_device_id", deviceId);
-        }
-        document.getElementById("device_id").value = deviceId;
+    // Persistent device ID
+    let deviceId = localStorage.getItem("attendance_device_id");
+    if (!deviceId) {
+        deviceId = crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + Math.random().toString(36).substr(2);
+        localStorage.setItem("attendance_device_id", deviceId);
+    }
+    document.getElementById("device_id").value = deviceId;
 
-        const form = document.getElementById("checkin-form");
-        const response = document.getElementById("response");
+    const form = document.getElementById("checkin-form");
+    const responseEl = document.getElementById("response");
 
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            response.textContent = "Šaljem...";
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        responseEl.style.color = "black";
+        responseEl.textContent = "Šaljem...";
 
-            const data = {
-                ime: form.querySelector("[name='ime']").value,
-                jmbag: form.querySelector("[name='jmbag']").value,
-                device_id: deviceId,
-                token: "{{ token }}"  // or form.token.value
-            };
+        const data = {
+            ime: form.querySelector("[name='ime']").value.trim(),
+            jmbag: form.querySelector("[name='jmbag']").value.trim(),
+            device_id: deviceId,
+            token: form.querySelector("[name='token']").value.trim()
+        };
 
+        try {
+            const res = await fetch("/checkin", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+
+            let result;
             try {
-                const res = await fetch("/checkin", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await res.json();
-                if (res.ok) {
-                    response.style.color = "green";
-                    response.textContent = "Uspješno prijavljeno!";
-                    form.reset();
-                } else {
-                    response.style.color = "red";
-                    response.textContent = result.detail || "Greška";
-                }
-            } catch (err) {
-                response.style.color = "red";
-                response.textContent = "Nema veze sa serverom";
+                result = await res.json();
+            } catch {
+                // Server sent HTML or invalid JSON → fallback
+                result = { detail: "Server error - invalid response" };
             }
-        });
-    </script>
+
+            if (res.ok) {
+                responseEl.style.color = "green";
+                responseEl.textContent = "Uspješno prijavljeno!";
+                form.reset();
+            } else {
+                responseEl.style.color = "red";
+                responseEl.textContent = result.detail || "Greška pri prijavi";
+            }
+        } catch (err) {
+            responseEl.style.color = "red";
+            responseEl.textContent = "Nema veze sa serverom: " + err.message;
+        }
+    });
+</script>
 </body>
 </html>
