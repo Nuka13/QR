@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+gspread
+google-auth
+jinja2
+qrcode
+python-dotenv
