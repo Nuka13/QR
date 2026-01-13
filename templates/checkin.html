@@ -3,61 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Check-in</title>
+    <title>Prisutnost</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+        body { font-family: Arial, sans-serif; max-width: 90%; margin: 40px auto; padding: 20px; }
         h2 { text-align: center; }
-        form { display: flex; flex-direction: column; gap: 12px; }
-        input, button { padding: 10px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; }
-        button { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #45a049; }
-        .error { color: red; font-weight: bold; }
+        input, button { padding: 12px; margin: 10px 0; width: 100%; box-sizing: border-box; font-size: 16px; }
+        button { background: #4CAF50; color: white; border: none; cursor: pointer; }
+        #response { margin-top: 20px; text-align: center; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h2>Prijava prisutnosti</h2>
+    <h2>Prisutnost</h2>
 
-    <form id="checkin-form" method="POST" action="/checkin">
-        <input type="hidden" name="token" value="{{ token }}">
+    <form id="checkin-form">
+        <input type="hidden" name="token" id="token" value="{{ token }}">
 
-        <label for="ime">Ime:</label>
-        <input type="text" id="ime" name="ime" required placeholder="Vaše ime">
+        <label>Ime:</label>
+        <input type="text" name="ime" required placeholder="Vaše ime">
 
-        <label for="jmbag">JMBAG:</label>
-        <input type="text" id="jmbag" name="jmbag" required placeholder="Vaš JMBAG">
+        <label>JMBAG:</label>
+        <input type="text" name="jmbag" required placeholder="00365...">
 
-        <input type="hidden" id="device_id" name="device_id" value="{{ device_id }}">
+        <input type="hidden" name="device_id" id="device_id">
 
         <button type="submit">Prijavi se</button>
     </form>
 
-    <p id="response" class="error"></p>
+    <p id="response"></p>
 
     <script>
-        // Optional: handle form submission via fetch for nicer UX
-        const form = document.getElementById('checkin-form');
-        const responseEl = document.getElementById('response');
+        // Generate persistent device ID
+        let deviceId = localStorage.getItem("attendance_device_id");
+        if (!deviceId) {
+            deviceId = crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + Math.random().toString(36).substr(2);
+            localStorage.setItem("attendance_device_id", deviceId);
+        }
+        document.getElementById("device_id").value = deviceId;
 
-        form.addEventListener('submit', async (e) => {
+        const form = document.getElementById("checkin-form");
+        const response = document.getElementById("response");
+
+        form.addEventListener("submit", async (e) => {
             e.preventDefault();
-            const formData = new FormData(form);
+            response.textContent = "Šaljem...";
+
+            const data = {
+                ime: form.querySelector("[name='ime']").value,
+                jmbag: form.querySelector("[name='jmbag']").value,
+                device_id: deviceId,
+                token: "{{ token }}"  // or form.token.value
+            };
 
             try {
                 const res = await fetch("/checkin", {
                     method: "POST",
-                    body: formData
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data)
                 });
 
-                const data = await res.json();
-
+                const result = await res.json();
                 if (res.ok) {
-                    alert("Uspješno prijavljeno!");
+                    response.style.color = "green";
+                    response.textContent = "Uspješno prijavljeno!";
                     form.reset();
                 } else {
-                    responseEl.textContent = data.detail || "Greška pri prijavi";
+                    response.style.color = "red";
+                    response.textContent = result.detail || "Greška";
                 }
             } catch (err) {
-                responseEl.textContent = "Greška: " + err.message;
+                response.style.color = "red";
+                response.textContent = "Nema veze sa serverom";
             }
         });
     </script>
