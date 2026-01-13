@@ -22,7 +22,7 @@ templates = Jinja2Templates(directory="templates")
 
 # ─────────────── CONFIG ───────────────
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-QR_REFRESH_SECONDS = 200000
+QR_REFRESH_SECONDS = 20
 BASE_URL_FALLBACK = os.getenv("BASE_URL", "http://localhost:8000")
 
 # ─────────────── GLOBAL STATE ───────────────
