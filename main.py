@@ -23,7 +23,6 @@ templates = Jinja2Templates(directory="templates")
 # ────────────────────────────────────────────────
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")          # ← hardcoded for now – change this!
-SESSION_ID = "Razred-3c"              # ← can be changed per class
 QR_REFRESH_SECONDS = 20               # how often QR changes
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")   # ← CHANGE THIS when deploying (or use request.url)
 
@@ -74,12 +73,8 @@ async def show_form(request: Request):
         if not token:
             return HTMLResponse("<h2>QR još nije spreman. Pokušajte ponovno za nekoliko sekundi.</h2>")
 
-    form_url = f"{BASE_URL}/form"  # self-reference
-
     return templates.TemplateResponse("checkin.html", {
-        "request": request,
-        "token": token,
-        "session_id": SESSION_ID
+        "request": request
     })
 
 # ────────────────────────────────────────────────
@@ -87,14 +82,15 @@ async def show_form(request: Request):
 # ────────────────────────────────────────────────
 
 @app.get("/qr")
-async def get_qr():
+async def get_qr(request: Request):
     with lock:
         token = current_qr_token
         if not token:
             raise HTTPException(500, "QR token nije dostupan")
 
-    # QR points to the form with current token in query param
-    form_url = f"{BASE_URL}/form?token={quote(token)}"
+    # Use dynamic base URL from request
+    base_url = str(request.base_url).rstrip('/')
+    form_url = f"{base_url}/form?token={quote(token)}"
 
     img = qrcode.make(form_url)
     buf = io.BytesIO()
@@ -119,8 +115,8 @@ async def checkin(data: CheckinData):
         append_checkin(
             name=data.ime,
             student_number=data.jmbag,
-            class_id=SESSION_ID,
-            device_id=data.device_id
+            class_id="",
+            device_id=""
         )
         return {"status": "success"}
     except Exception as e:
@@ -146,7 +142,6 @@ async def admin_dashboard(request: Request, password: str = None):
 
     return templates.TemplateResponse("admin.html", {
         "request": request,
-        "session_id": SESSION_ID,
         "device_count": device_count,
         "qr_url": "/qr",
         "password": ADMIN_PASSWORD  # for reset link
@@ -160,4 +155,4 @@ async def reset_session(password: str = Form(...)):
     with lock:
         used_devices.clear()
 
-    return {"status": "Sesija resetirana", "new_session_id": SESSION_ID}
+    return {"status": "Sesija resetirana"}

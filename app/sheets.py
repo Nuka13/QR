@@ -29,12 +29,8 @@ def get_sheet():
 
 def append_checkin(name: str, student_number: str, class_id: str, device_id: str):
     sheet = get_sheet()
-    timestamp = datetime.utcnow().isoformat()
 
     sheet.append_row([
         name,
-        student_number,
-        class_id,
-        device_id,
-        timestamp
+        student_number
     ])

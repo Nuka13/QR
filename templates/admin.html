@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin – {{ session_id }}</title>
+    <title>Admin</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
         h1, h2 { text-align: center; }
@@ -14,15 +14,13 @@
     </style>
 </head>
 <body>
-    <h1>Admin ploča – {{ session_id }}</h1>
-    <p style="text-align: center; font-size: 1.2em;">
-        Trenutno prijavljeno uređaja: <strong>{{ device_count }}</strong>
-    </p>
-
     <div style="text-align: center;">
         <h2>QR kod za učenike</h2>
         <img src="{{ qr_url }}" alt="QR kod za prisutnost">
-        <p>(QR se mijenja svakih {{ QR_REFRESH_SECONDS }} sekundi)</p>
+
+        <p style="text-align: center; font-size: 1.2em;">
+            Trenutno prijavljenih: <strong>{{ device_count }}</strong>
+        </p>
 
         <button class="green" onclick="resetSession()">Resetiraj sesiju (novi početak)</button>
     </div>
