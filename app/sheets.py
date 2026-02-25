@@ -28,18 +28,3 @@ def append_checkin(name: str, student_number: str, device_id: str):
         student_number,
         device_id
     ])
-```
-
-Changes: added a timestamp column (most important for attendance), removed the unused `class_id` parameter since your `CheckinData` model doesn't have it, and cleaned up `append_checkin` to match what `main.py` actually sends.
-
----
-
-As for `GOOGLE_CREDENTIALS_JSON` — I can't generate that for you because it's a real secret tied to **your** Google Cloud service account. To get it:
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Your project → **IAM & Admin → Service Accounts**
-3. Click your service account → **Keys → Add Key → Create new key → JSON**
-4. Open the downloaded file, copy the entire contents
-5. Paste it as the value of `GOOGLE_CREDENTIALS_JSON` on Render — it'll look like:
-```
-GOOGLE_CREDENTIALS_JSON={"type":"service_account","project_id":"qr-attendance-484118","private_key_id":"6cfb69...","private_key":"-----BEGIN RSA PRIVATE KEY-----\n...","client_email":"...@qr-attendance-484118.iam.gserviceaccount.com",...}
