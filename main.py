@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
-from app.sheets import get_sheet  # just get_sheet, we will batch append
-from datetime import datetime
+from app.sheets import get_sheet
 import qrcode
 import io
 import uuid
@@ -13,28 +13,30 @@ from urllib.parse import quote
 from typing import Optional
 from dotenv import load_dotenv
 import os
-import json
 
 load_dotenv()
 
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
 
 # ─────────────── CONFIG ───────────────
+# SESSION_SECRET can be any long random string
+SESSION_SECRET = os.getenv("SESSION_SECRET", "mom-knows-best-security-key-123")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 QR_REFRESH_SECONDS = 20
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
-SHEET_NAME = "Attendance"
+
+# Add the Session Middleware
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+
+templates = Jinja2Templates(directory="templates")
 
 # ─────────────── GLOBAL STATE ───────────────
 current_qr_token: Optional[str] = None
 previous_qr_token: Optional[str] = None
 used_devices = set()
 pending_checkins = []
-
 lock = threading.Lock()
 
-# ─────────────── BACKGROUND QR ROTATION ───────────────
 def rotate_token():
     global current_qr_token, previous_qr_token
     while True:
@@ -45,110 +47,110 @@ def rotate_token():
         time.sleep(QR_REFRESH_SECONDS)
 
 threading.Thread(target=rotate_token, daemon=True).start()
-time.sleep(1)  # give first token a moment
 
-# ─────────────── MODELS ───────────────
 class CheckinData(BaseModel):
     ime: str
     jmbag: str
     device_id: str
-    token: str  # token included now
+    token: str
 
-# ─────────────── CHECK-IN ENDPOINT ───────────────
-@app.post("/checkin")
-async def checkin(data: CheckinData):
-    with lock:
-        # Already checked in device
-        if data.device_id in used_devices:
-            raise HTTPException(400, "Ovaj uređaj je već prijavljen u ovoj sesiji.")
+# ─────────────── AUTH ROUTES ───────────────
 
-        # Check token validity (current or previous)
-        if data.token not in {current_qr_token, previous_qr_token}:
-            raise HTTPException(400, "QR kod je istekao.")
-
-        # Accept device
-        used_devices.add(data.device_id)
-        pending_checkins.append(data.dict())  # queue for batch write
-
-    return {"status": "success"}
-
-# ─────────────── QR CODE ENDPOINT ───────────────
-@app.get("/qr")
-async def get_qr(request: Request):
-    with lock:
-        token = current_qr_token
-        if not token:
-            raise HTTPException(500, "QR token nije dostupan")
-
-    base_url = str(request.base_url).rstrip('/')
-    form_url = f"{base_url}/form?token={quote(token)}"
-
-    img = qrcode.make(form_url)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="image/png")
-
-# ─────────────── STUDENT FORM ───────────────
-@app.get("/", response_class=HTMLResponse)
-@app.get("/form", response_class=HTMLResponse)
-async def show_form(request: Request, token: str = ""):
-    with lock:
-        if not current_qr_token:
-            return HTMLResponse("<h2>QR još nije spreman. Pokušajte ponovno za nekoliko sekundi.</h2>")
-
-    return templates.TemplateResponse("checkin.html", {
-        "request": request,
-        "token": token
-    })
-
-# ─────────────── ADMIN DASHBOARD ───────────────
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request, password: str = None):
-    if password != ADMIN_PASSWORD:
-        return HTMLResponse("""
-        <form method="get">
-            <h2>Admin pristup</h2>
-            Lozinka: <input type="password" name="password">
-            <button type="submit">Prijava</button>
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return """
+    <body style="font-family: Arial; display: flex; justify-content: center; padding-top: 100px; background: #f4f4f9;">
+        <form method="post" style="background: white; padding: 30px; border-radius: 8px; shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h2>Admin Prijava</h2>
+            <input type="password" name="password" placeholder="Lozinka" autofocus style="padding: 10px; width: 200px;"><br><br>
+            <button type="submit" style="width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; cursor: pointer;">Ulaz</button>
         </form>
-        """)
+    </body>
+    """
+
+@app.post("/login")
+async def login_action(request: Request, password: str = Form(...)):
+    if password == ADMIN_PASSWORD:
+        request.session["is_admin"] = True
+        return RedirectResponse(url="/admin", status_code=303)
+    return HTMLResponse("Pogrešna lozinka. <a href='/login'>Pokušaj ponovno</a>")
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login")
+
+# ─────────────── ADMIN & APP ROUTES ───────────────
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    if not request.session.get("is_admin"):
+        return RedirectResponse(url="/login")
+    
     with lock:
         device_count = len(used_devices)
 
     return templates.TemplateResponse("admin.html", {
         "request": request,
         "device_count": device_count,
-        "qr_url": "/qr",
-        "password": ADMIN_PASSWORD
+        "qr_refresh": QR_REFRESH_SECONDS
     })
 
+@app.get("/qr")
+async def get_qr(request: Request):
+    with lock:
+        token = current_qr_token
+    if not token:
+        raise HTTPException(500, "Token nije generiran")
+        
+    base_url = str(request.base_url).rstrip('/')
+    form_url = f"{base_url}/form?token={quote(token)}"
+    
+    img = qrcode.make(form_url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
+@app.post("/checkin")
+async def checkin(data: CheckinData):
+    with lock:
+        if data.device_id in used_devices:
+            raise HTTPException(400, "Uređaj već prijavljen.")
+        if data.token not in {current_qr_token, previous_qr_token}:
+            raise HTTPException(400, "QR kod istekao.")
+        
+        used_devices.add(data.device_id)
+        pending_checkins.append(data.dict())
+    return {"status": "success"}
+
+@app.get("/form", response_class=HTMLResponse)
+async def show_form(request: Request, token: str = ""):
+    return templates.TemplateResponse("checkin.html", {"request": request, "token": token})
+
 @app.post("/admin/reset")
-async def reset_session(password: str = Form(...)):
-    if password != ADMIN_PASSWORD:
-        raise HTTPException(403, "Pogrešna lozinka")
+async def reset_session(request: Request):
+    if not request.session.get("is_admin"):
+        raise HTTPException(403)
     with lock:
         used_devices.clear()
         pending_checkins.clear()
     return {"status": "Sesija resetirana"}
 
-# ─────────────── BATCH WRITER THREAD ───────────────
+# ─────────────── BATCH WRITER ───────────────
 def batch_writer():
     while True:
-        time.sleep(2)  # write every 2 seconds
+        time.sleep(2)
         with lock:
             batch = pending_checkins.copy()
             pending_checkins.clear()
-        if not batch:
-            continue
+        if not batch: continue
         try:
             sheet = get_sheet()
             rows = [[c["ime"], c["jmbag"], c["device_id"]] for c in batch]
             sheet.append_rows(rows)
         except Exception as e:
-            # On failure, requeue
-            with lock:
-                pending_checkins.extend(batch)
-            print("Batch write failed:", e)
+            with lock: pending_checkins.extend(batch)
+            print("Greška pri pisanju u Sheets:", e)
 
 threading.Thread(target=batch_writer, daemon=True).start()
