@@ -4,69 +4,274 @@
     <meta charset="UTF-8">
     <title>Admin Dashboard</title>
     <style>
-        body { font-family: Arial; max-width: 800px; margin: 40px auto; background: #f9f9f9; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; }
-        img { max-width: 320px; margin: 20px auto; display: block; }
-        button { padding: 12px 24px; margin: 10px; border: none; background: #4CAF50; color: white; cursor: pointer; border-radius: 6px; }
-        .logout { position: absolute; right: 20px; top: 20px; text-decoration: none; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f9;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        header {
+            width: 100%;
+            max-width: 700px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        header h1 { font-size: 1.4rem; color: #333; }
+        .logout {
+            text-decoration: none;
+            color: #e53935;
+            font-size: 0.9rem;
+            border: 1px solid #e53935;
+            padding: 6px 14px;
+            border-radius: 6px;
+            transition: background 0.2s, color 0.2s;
+        }
+        .logout:hover { background: #e53935; color: white; }
+
+        .card {
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            padding: 32px;
+            width: 100%;
+            max-width: 700px;
+            text-align: center;
+        }
+
+        /* QR + info side by side on wider screens */
+        .main-layout {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 32px;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .qr-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+        .qr-wrapper img {
+            width: 280px;
+            height: 280px;
+            border: 3px solid #e0e0e0;
+            border-radius: 10px;
+            transition: opacity 0.3s;
+        }
+        .qr-wrapper img.refreshing { opacity: 0.3; }
+
+        /* Countdown ring */
+        .countdown-ring {
+            position: relative;
+            width: 70px;
+            height: 70px;
+        }
+        .countdown-ring svg {
+            transform: rotate(-90deg);
+        }
+        .countdown-ring .bg { stroke: #e0e0e0; }
+        .countdown-ring .progress { stroke: #4CAF50; stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.3s; }
+        .countdown-label {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .info-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            justify-content: center;
+            min-width: 180px;
+        }
+        .stat-box {
+            background: #f0f4ff;
+            border-radius: 10px;
+            padding: 18px 24px;
+            text-align: center;
+        }
+        .stat-box .label { font-size: 0.85rem; color: #666; margin-bottom: 6px; }
+        .stat-box .value { font-size: 2rem; font-weight: bold; color: #3949ab; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status-badge.warning { background: #fff3e0; color: #e65100; }
+
+        .actions { margin-top: 28px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        button {
+            padding: 11px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        button:active { transform: scale(0.97); }
+        .btn-reset { background: #e53935; color: white; }
+        .btn-reset:hover { opacity: 0.88; }
+        .btn-refresh { background: #1976d2; color: white; }
+        .btn-refresh:hover { opacity: 0.88; }
+
+        #toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: #323232;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: transform 0.3s, opacity 0.3s;
+            pointer-events: none;
+            z-index: 999;
+        }
+        #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
     </style>
 </head>
 <body>
 
-<a href="/logout" class="logout">Odjava</a>
+<header>
+    <h1>📋 Sustav prisutnosti</h1>
+    <a href="/logout" class="logout">Odjava</a>
+</header>
 
 <div class="card">
-    <h2>QR kod za prisutnost</h2>
+    <div class="main-layout">
 
-    <div>
-        Osvježavanje za:
-        <strong><span id="seconds">{{ seconds_left }}</span>s</strong>
+        <div class="qr-wrapper">
+            <img id="qr-image" src="/qr" alt="QR kod">
+            <div class="countdown-ring">
+                <svg width="70" height="70" viewBox="0 0 70 70">
+                    <circle class="bg" cx="35" cy="35" r="30" fill="none" stroke-width="6"/>
+                    <circle id="ring" class="progress" cx="35" cy="35" r="30" fill="none" stroke-width="6"
+                        stroke-dasharray="188.5"
+                        stroke-dashoffset="0"/>
+                </svg>
+                <div class="countdown-label"><span id="seconds">{{ seconds_left }}</span>s</div>
+            </div>
+            <span id="status-badge" class="status-badge">● Aktivan</span>
+        </div>
+
+        <div class="info-panel">
+            <div class="stat-box">
+                <div class="label">Prijavljenih uređaja</div>
+                <div class="value" id="count">{{ device_count }}</div>
+            </div>
+            <div class="stat-box">
+                <div class="label">Interval osvježavanja</div>
+                <div class="value" style="font-size:1.4rem;">{{ qr_refresh }}s</div>
+            </div>
+        </div>
+
     </div>
 
-    <img id="qr-image" src="/qr" alt="QR kod">
-
-    <p>
-        Trenutno prijavljenih:
-        <strong id="count">{{ device_count }}</strong>
-    </p>
-
-    <button onclick="resetSession()">Resetiraj sesiju</button>
+    <div class="actions">
+        <button class="btn-refresh" onclick="forceRefreshQR()">↻ Osvježi QR odmah</button>
+        <button class="btn-reset" onclick="resetSession()">🗑 Resetiraj sesiju</button>
+    </div>
 </div>
 
+<div id="toast"></div>
+
 <script>
-const secondsLeft = Number("{{ seconds_left }}");
-const refreshTotal = Number("{{ qr_refresh }}");
+    const REFRESH_TOTAL = Number("{{ qr_refresh }}");
+    let timeLeft = Number("{{ seconds_left }}");
+    const circumference = 188.5;
+    const ring = document.getElementById("ring");
+    const badge = document.getElementById("status-badge");
 
-let timeLeft = secondsLeft;
+    function updateRing(t) {
+        const fraction = t / REFRESH_TOTAL;
+        ring.style.strokeDashoffset = circumference * (1 - fraction);
+        // colour shifts red as time runs out
+        if (fraction > 0.4) {
+            ring.style.stroke = "#4CAF50";
+            badge.className = "status-badge";
+            badge.textContent = "● Aktivan";
+        } else {
+            ring.style.stroke = "#e65100";
+            badge.className = "status-badge warning";
+            badge.textContent = "● Osvježavanje...";
+        }
+    }
 
-function tick() {
-    if (timeLeft <= 0) {
+    function refreshQR() {
+        const img = document.getElementById("qr-image");
+        img.classList.add("refreshing");
+        const newImg = new Image();
+        newImg.onload = () => {
+            img.src = newImg.src;
+            img.classList.remove("refreshing");
+        };
+        newImg.src = "/qr?t=" + Date.now();
+    }
+
+    function forceRefreshQR() {
+        timeLeft = REFRESH_TOTAL;
         refreshQR();
-        timeLeft = refreshTotal;
+        showToast("QR kod osvježen.");
     }
 
-    document.getElementById("seconds").textContent = timeLeft;
-    timeLeft--;
-}
+    setInterval(() => {
+        if (timeLeft <= 0) {
+            refreshQR();
+            timeLeft = REFRESH_TOTAL;
+        }
+        updateRing(timeLeft);
+        document.getElementById("seconds").textContent = timeLeft;
+        timeLeft--;
+    }, 1000);
 
-function refreshQR() {
-    const img = document.getElementById("qr-image");
-    img.src = "/qr?t=" + Date.now();
-}
+    updateRing(timeLeft);
 
-setInterval(tick, 1000);
+    // Poll device count every 5s without full reload
+    setInterval(async () => {
+        try {
+            const r = await fetch("/admin/status");
+            if (r.ok) {
+                const d = await r.json();
+                document.getElementById("count").textContent = d.device_count;
+            }
+        } catch {}
+    }, 5000);
 
-async function resetSession() {
-    if (!confirm("Resetirati sesiju?")) return;
-
-    const r = await fetch("/admin/reset", { method: "POST" });
-    if (r.ok) {
-        location.reload();
-    } else {
-        alert("Greška pri resetu.");
+    async function resetSession() {
+        if (!confirm("Resetirati sesiju? Svi prijavljeni uređaji bit će obrisani.")) return;
+        const r = await fetch("/admin/reset", { method: "POST" });
+        if (r.ok) {
+            document.getElementById("count").textContent = "0";
+            showToast("Sesija resetirana.");
+        } else {
+            showToast("Greška pri resetu!");
+        }
     }
-}
+
+    function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 3000);
+    }
 </script>
-
 </body>
 </html>
