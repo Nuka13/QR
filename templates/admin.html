@@ -2,82 +2,71 @@
 <html lang="hr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #f9f9f9; }
-        h2 { text-align: center; color: #333; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-        button { padding: 12px 24px; font-size: 16px; margin: 10px; cursor: pointer; border-radius: 6px; font-weight: bold; border: none; transition: 0.2s; }
-        .green { background: #4CAF50; color: white; }
-        .green:hover { background: #45a049; }
-        .logout { background: #666; color: white; text-decoration: none; padding: 8px 15px; border-radius: 4px; font-size: 14px; position: absolute; top: 20px; right: 20px; }
-        img { max-width: 320px; margin: 20px auto; display: block; border: 8px solid #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        #timer-display { font-size: 1.5em; color: #f44336; font-weight: bold; margin: 10px 0; }
-        .count-text { font-size: 1.3em; margin-top: 20px; }
+        body { font-family: Arial; max-width: 800px; margin: 40px auto; background: #f9f9f9; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; }
+        img { max-width: 320px; margin: 20px auto; display: block; }
+        button { padding: 12px 24px; margin: 10px; border: none; background: #4CAF50; color: white; cursor: pointer; border-radius: 6px; }
+        .logout { position: absolute; right: 20px; top: 20px; text-decoration: none; }
     </style>
 </head>
 <body>
-    <a href="/logout" class="logout">Odjava</a>
 
-    <div class="card">
-        <h2>QR kod za prisutnost</h2>
-        
-        <div id="timer-display">Osvježavanje za: <span id="seconds">20</span>s</div>
-        
-        <div id="qr-container">
-            <img id="qr-image" src="/qr" alt="QR kod">
-        </div>
+<a href="/logout" class="logout">Odjava</a>
 
-        <p class="count-text">
-            Trenutno prijavljenih: <strong id="count">{{ device_count }}</strong>
-        </p>
+<div class="card">
+    <h2>QR kod za prisutnost</h2>
 
-        <button class="green" onclick="resetSession()">Resetiraj sesiju</button>
+    <div>
+        Osvježavanje za:
+        <strong><span id="seconds">{{ seconds_left }}</span>s</strong>
     </div>
 
-    <script>
-        const REFRESH_TOTAL = {{ qr_refresh }};
-        let timeLeft = REFRESH_TOTAL;
+    <img id="qr-image" src="/qr" alt="QR kod">
 
-        function updateUI() {
-            document.getElementById('seconds').innerText = timeLeft;
-            if (timeLeft <= 0) {
-                refreshQR();
-                timeLeft = REFRESH_TOTAL;
-            }
-            timeLeft--;
-        }
+    <p>
+        Trenutno prijavljenih:
+        <strong id="count">{{ device_count }}</strong>
+    </p>
 
-        function refreshQR() {
-            const img = document.getElementById('qr-image');
-            img.src = '/qr?t=' + new Date().getTime();
-        }
+    <button onclick="resetSession()">Resetiraj sesiju</button>
+</div>
 
-        // Countdown interval
-        setInterval(updateUI, 1000);
+<script>
+const secondsLeft = Number("{{ seconds_left }}");
+const refreshTotal = Number("{{ qr_refresh }}");
 
-        async function resetSession() {
-            if (!confirm("Ovo će obrisati trenutnu listu prijava za ovu sesiju. Nastaviti?")) return;
-            const resp = await fetch("/admin/reset", { method: "POST" });
-            if (resp.ok) {
-                location.reload();
-            } else {
-                alert("Greška pri resetu.");
-            }
-        }
+let timeLeft = secondsLeft;
 
-        // Silent count update every 5 seconds
-        setInterval(() => {
-            fetch(location.href)
-                .then(response => response.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, "text/html");
-                    const newCount = doc.querySelector('#count').innerText;
-                    document.querySelector('#count').innerText = newCount;
-                });
-        }, 5000);
-    </script>
+function tick() {
+    if (timeLeft <= 0) {
+        refreshQR();
+        timeLeft = refreshTotal;
+    }
+
+    document.getElementById("seconds").textContent = timeLeft;
+    timeLeft--;
+}
+
+function refreshQR() {
+    const img = document.getElementById("qr-image");
+    img.src = "/qr?t=" + Date.now();
+}
+
+setInterval(tick, 1000);
+
+async function resetSession() {
+    if (!confirm("Resetirati sesiju?")) return;
+
+    const r = await fetch("/admin/reset", { method: "POST" });
+    if (r.ok) {
+        location.reload();
+    } else {
+        alert("Greška pri resetu.");
+    }
+}
+</script>
+
 </body>
 </html>
