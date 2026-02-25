@@ -132,6 +132,14 @@ async def reset_session(request: Request):
     return {"status": "resetirano"}
 
 
+@app.get("/admin/status")
+async def admin_status(request: Request):
+    if not request.session.get("is_admin"):
+        raise HTTPException(status_code=403)
+    with lock:
+        return {"device_count": len(used_devices)}
+
+
 # ─────────────── QR ───────────────
 @app.get("/qr")
 async def get_qr(request: Request):
