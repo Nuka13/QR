@@ -25,8 +25,9 @@ QR_REFRESH_SECONDS = 20
 
 if not SESSION_SECRET:
     raise RuntimeError("SESSION_SECRET not set")
+if not ADMIN_PASSWORD:
+    raise RuntimeError("ADMIN_PASSWORD not set")
 
-# Secure session cookies
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
@@ -69,7 +70,10 @@ class CheckinData(BaseModel):
 
 # ─────────────── AUTH ───────────────
 @app.get("/login", response_class=HTMLResponse)
-async def login_page():
+async def login_page(request: Request):
+    # Redirect if already logged in
+    if request.session.get("is_admin"):
+        return RedirectResponse(url="/admin")
     return """
     <body style="font-family: Arial; display: flex; justify-content: center; padding-top: 100px; background: #f4f4f9;">
         <form method="post" style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
@@ -85,20 +89,24 @@ async def login_action(request: Request, password: str = Form(...)):
     if password == ADMIN_PASSWORD:
         request.session["is_admin"] = True
         return RedirectResponse(url="/admin", status_code=303)
-    return HTMLResponse("Pogrešna lozinka. <a href='/login'>Pokušaj ponovno</a>")
+    # Use 303 redirect back to login on failure to avoid re-POST on refresh
+    return HTMLResponse(
+        "Pogrešna lozinka. <a href='/login'>Pokušaj ponovno</a>",
+        status_code=401
+    )
 
 
 @app.get("/logout")
 async def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="/login")
+    return RedirectResponse(url="/login", status_code=303)
 
 
 # ─────────────── ADMIN ───────────────
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     if not request.session.get("is_admin"):
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/login", status_code=303)
 
     with lock:
         device_count = len(used_devices)
@@ -115,7 +123,7 @@ async def admin_dashboard(request: Request):
 @app.post("/admin/reset")
 async def reset_session(request: Request):
     if not request.session.get("is_admin"):
-        raise HTTPException(403)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     with lock:
         used_devices.clear()
@@ -127,6 +135,9 @@ async def reset_session(request: Request):
 # ─────────────── QR ───────────────
 @app.get("/qr")
 async def get_qr(request: Request):
+    if not request.session.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     with lock:
         token = current_qr_token
 
@@ -138,7 +149,11 @@ async def get_qr(request: Request):
     img.save(buf, format="PNG")
     buf.seek(0)
 
-    return StreamingResponse(buf, media_type="image/png")
+    return StreamingResponse(
+        buf,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"}  # prevent browser caching old QR
+    )
 
 
 # ─────────────── FORM ───────────────
@@ -155,10 +170,10 @@ async def show_form(request: Request, token: str = ""):
 async def checkin(data: CheckinData):
     with lock:
         if data.device_id in used_devices:
-            raise HTTPException(400, "Uređaj već prijavljen.")
+            raise HTTPException(status_code=400, detail="Uređaj već prijavljen.")
 
         if data.token not in {current_qr_token, previous_qr_token}:
-            raise HTTPException(400, "QR kod istekao.")
+            raise HTTPException(status_code=400, detail="QR kod istekao.")
 
         used_devices.add(data.device_id)
         pending_checkins.append(data.dict())
@@ -171,11 +186,10 @@ def batch_writer():
     while True:
         time.sleep(2)
         with lock:
+            if not pending_checkins:
+                continue
             batch = pending_checkins.copy()
             pending_checkins.clear()
-
-        if not batch:
-            continue
 
         try:
             sheet = get_sheet()
@@ -183,7 +197,7 @@ def batch_writer():
             sheet.append_rows(rows)
         except Exception as e:
             print("Greška pri pisanju:", e)
-            with lock:
+            with lock:                      # re-acquire lock safely for re-insert
                 pending_checkins.extend(batch)
 
 threading.Thread(target=batch_writer, daemon=True).start()
