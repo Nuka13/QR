@@ -1,12 +1,12 @@
 fastapi
 uvicorn
-gspread
-google-auth
 jinja2
-qrcode
-Pillow
-python-dotenv
 python-multipart
+qrcode
+gspread
+oauth2client
+itsdangerous
+python-dotenv
 
 
 
